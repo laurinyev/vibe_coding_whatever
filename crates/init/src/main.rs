@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use common::syscall::{FD_STDIN, FD_STDOUT, SYS_READ, SYS_WRITE};
+use common::syscall::{FD_STDIN, FD_STDOUT};
 use core::arch::asm;
 
 #[panic_handler]
@@ -13,15 +13,23 @@ fn panic(_: &core::panic::PanicInfo<'_>) -> ! {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    let banner = b"[init] hello from userspace via write() syscall\n";
-    let _ = sys_write(FD_STDOUT, banner);
+    let _ = mlibc::write(
+        FD_STDOUT,
+        b"[init] hello from userspace via write() syscall\n",
+    );
 
-    let _ = sys_write(FD_STDOUT, b"[init] type one line and press enter:\n");
+    if let Ok(mapped) = mlibc::memmap(16 * 1024) {
+        let _ = mlibc::write(FD_STDOUT, b"[init] memmap ok at ");
+        write_hex(mapped as usize);
+        let _ = mlibc::write(FD_STDOUT, b"\n");
+    }
+
+    let _ = mlibc::write(FD_STDOUT, b"[init] type one line and press enter:\n");
     let mut buf = [0u8; 64];
-    let n = sys_read(FD_STDIN, &mut buf).unwrap_or(0);
-    let _ = sys_write(FD_STDOUT, b"[init] echo: ");
-    let _ = sys_write(FD_STDOUT, &buf[..n]);
-    let _ = sys_write(FD_STDOUT, b"[init] done\n");
+    let n = mlibc::read(FD_STDIN, &mut buf).unwrap_or(0);
+    let _ = mlibc::write(FD_STDOUT, b"[init] echo: ");
+    let _ = mlibc::write(FD_STDOUT, &buf[..n]);
+    let _ = mlibc::write(FD_STDOUT, b"[init] done\n");
 
     unsafe {
         asm!("out dx, al", in("dx") 0xF4u16, in("al") 0x10u8, options(nostack, nomem));
@@ -32,30 +40,18 @@ pub extern "C" fn _start() -> ! {
     }
 }
 
-fn sys_write(fd: u64, bytes: &[u8]) -> Result<usize, isize> {
-    syscall3(SYS_WRITE, fd, bytes.as_ptr() as u64, bytes.len() as u64)
-}
-
-fn sys_read(fd: u64, bytes: &mut [u8]) -> Result<usize, isize> {
-    syscall3(SYS_READ, fd, bytes.as_mut_ptr() as u64, bytes.len() as u64)
-}
-
-fn syscall3(n: u64, a: u64, b: u64, c: u64) -> Result<usize, isize> {
-    let ret: i64;
-    unsafe {
-        asm!(
-            "int 0x80",
-            in("rax") n,
-            in("rdi") a,
-            in("rsi") b,
-            in("rdx") c,
-            lateout("rax") ret,
-            options(nostack)
-        );
+fn write_hex(mut v: usize) {
+    let mut out = [0u8; 2 + 16];
+    out[0] = b'0';
+    out[1] = b'x';
+    for i in (2..18).rev() {
+        let nib = (v & 0xF) as u8;
+        out[i] = if nib < 10 {
+            b'0' + nib
+        } else {
+            b'a' + (nib - 10)
+        };
+        v >>= 4;
     }
-    if ret < 0 {
-        Err(ret as isize)
-    } else {
-        Ok(ret as usize)
-    }
+    let _ = mlibc::write(FD_STDOUT, &out);
 }

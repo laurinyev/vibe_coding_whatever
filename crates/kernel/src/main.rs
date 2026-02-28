@@ -2,7 +2,7 @@
 #![no_main]
 
 use common::elf::{ProgramHeader, parse_elf64};
-use common::syscall::{FD_STDIN, FD_STDOUT, SYS_READ, SYS_WRITE};
+use common::syscall::{FD_STDIN, FD_STDOUT, SYS_MEMMAP, SYS_READ, SYS_WRITE};
 use common::ustar::find_file;
 use core::arch::{asm, global_asm};
 use core::fmt::{self, Write};
@@ -107,9 +107,34 @@ impl Write for Tty {
 
 static TTY: Mutex<Tty> = Mutex::new(Tty::new());
 static INPUT: Mutex<[u8; 128]> = Mutex::new([0; 128]);
+static MEM_MANAGER: Mutex<MemManager> = Mutex::new(MemManager::new());
 
 const INIT_LOAD_BUF_SIZE: usize = 2 * 1024 * 1024;
 static mut INIT_LOAD_BUF: [u8; INIT_LOAD_BUF_SIZE] = [0; INIT_LOAD_BUF_SIZE];
+
+const USER_MEM_POOL_SIZE: usize = 1024 * 1024;
+static mut USER_MEM_POOL: [u8; USER_MEM_POOL_SIZE] = [0; USER_MEM_POOL_SIZE];
+
+struct MemManager {
+    next: usize,
+}
+
+impl MemManager {
+    const fn new() -> Self {
+        Self { next: 0 }
+    }
+
+    fn memmap(&mut self, length: usize) -> Option<usize> {
+        let aligned = (length + 0xfff) & !0xfff;
+        let off = (self.next + 0xfff) & !0xfff;
+        if off.checked_add(aligned)? > USER_MEM_POOL_SIZE {
+            return None;
+        }
+        self.next = off + aligned;
+        let base = core::ptr::addr_of_mut!(USER_MEM_POOL) as *mut u8;
+        Some(base as usize + off)
+    }
+}
 
 unsafe extern "C" {
     fn syscall_int80();
@@ -128,6 +153,11 @@ extern "C" fn kmain() -> ! {
     }
 
     let _ = writeln!(TTY.lock(), "[kernel] limine boot ok");
+    let _ = writeln!(
+        TTY.lock(),
+        "[kernel] simple mem manager ready ({} KiB)",
+        USER_MEM_POOL_SIZE / 1024
+    );
 
     install_idt();
 
@@ -145,20 +175,34 @@ extern "C" fn kmain() -> ! {
 
     let _ = writeln!(TTY.lock(), "[kernel] launching init @ {:#x}", entry_addr);
 
-    // Minimal single-tasking handoff placeholder: emit expected init flow on TTY/serial.
-    // (Real userspace mode/MMU separation is intentionally out of scope for this tiny prototype.)
-    let _ = writeln!(
-        TTY.lock(),
-        "[init] hello from userspace via write() syscall"
-    );
-    let _ = writeln!(TTY.lock(), "[init] type one line and press enter:");
-    let _ = writeln!(TTY.lock(), "[init] echo: typed-from-kernel");
-    let _ = writeln!(TTY.lock(), "[init] done");
+    let entry: extern "C" fn() -> ! = unsafe { core::mem::transmute(entry_addr) };
+    entry()
+}
 
-    unsafe { outb(0xF4, 0x10) };
-    loop {
-        unsafe { asm!("hlt") };
-    }
+fn rd16(b: &[u8], o: usize) -> Option<u16> {
+    Some(u16::from_le_bytes([*b.get(o)?, *b.get(o + 1)?]))
+}
+
+fn rd32(b: &[u8], o: usize) -> Option<u32> {
+    Some(u32::from_le_bytes([
+        *b.get(o)?,
+        *b.get(o + 1)?,
+        *b.get(o + 2)?,
+        *b.get(o + 3)?,
+    ]))
+}
+
+fn rd64(b: &[u8], o: usize) -> Option<u64> {
+    Some(u64::from_le_bytes([
+        *b.get(o)?,
+        *b.get(o + 1)?,
+        *b.get(o + 2)?,
+        *b.get(o + 3)?,
+        *b.get(o + 4)?,
+        *b.get(o + 5)?,
+        *b.get(o + 6)?,
+        *b.get(o + 7)?,
+    ]))
 }
 
 fn load_init_image(
@@ -217,9 +261,76 @@ fn load_init_image(
         }
     }
 
+    let e_type = rd16(bytes, 16)?;
+    if e_type == 3 {
+        apply_relative_relocations(bytes, base as usize, min_vaddr)?;
+    }
+
     entry
         .checked_sub(min_vaddr)
         .map(|entry_off| base as usize + entry_off)
+}
+
+fn apply_relative_relocations(bytes: &[u8], base: usize, min_vaddr: usize) -> Option<()> {
+    let phoff = rd64(bytes, 32)? as usize;
+    let phentsize = rd16(bytes, 54)? as usize;
+    let phnum = rd16(bytes, 56)? as usize;
+
+    let mut rela_vaddr = 0usize;
+    let mut rela_size = 0usize;
+    let mut rela_ent = 24usize;
+
+    for i in 0..phnum {
+        let o = phoff + i * phentsize;
+        if rd32(bytes, o)? != 2 {
+            continue;
+        }
+        let dyn_off = rd64(bytes, o + 8)? as usize;
+        let dyn_size = rd64(bytes, o + 32)? as usize;
+        let end = dyn_off.checked_add(dyn_size)?;
+        if end > bytes.len() {
+            return None;
+        }
+
+        let mut d = dyn_off;
+        while d + 16 <= end {
+            let tag = rd64(bytes, d)? as i64;
+            let val = rd64(bytes, d + 8)? as usize;
+            match tag {
+                0 => break,
+                7 => rela_vaddr = val,
+                8 => rela_size = val,
+                9 => rela_ent = val,
+                _ => {}
+            }
+            d += 16;
+        }
+    }
+
+    if rela_vaddr == 0 || rela_size == 0 || rela_ent == 0 {
+        return Some(());
+    }
+
+    let rela_off = rela_vaddr.checked_sub(min_vaddr)?;
+    let mut off = base.checked_add(rela_off)?;
+    let end = off.checked_add(rela_size)?;
+
+    while off < end {
+        let r_offset = unsafe { *(off as *const u64) } as usize;
+        let r_info = unsafe { *((off + 8) as *const u64) };
+        let r_addend = unsafe { *((off + 16) as *const i64) } as isize;
+
+        let r_type = (r_info & 0xffff_ffff) as u32;
+        if r_type == 8 {
+            let dst = base.checked_add(r_offset.checked_sub(min_vaddr)?)? as *mut u64;
+            let val = (base as isize + r_addend) as u64;
+            unsafe { *dst = val };
+        }
+
+        off = off.checked_add(rela_ent)?;
+    }
+
+    Some(())
 }
 
 #[repr(C, packed)]
@@ -291,6 +402,14 @@ extern "C" fn syscall_dispatch(nr: u64, fd: u64, ptr: u64, len: u64) -> i64 {
             } else {
                 -22
             }
+        }
+        SYS_MEMMAP => {
+            let len = fd as usize;
+            MEM_MANAGER
+                .lock()
+                .memmap(len)
+                .map(|addr| addr as i64)
+                .unwrap_or(-12)
         }
         SYS_READ if fd == FD_STDIN => {
             let mut input = INPUT.lock();

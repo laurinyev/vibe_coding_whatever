@@ -9,9 +9,9 @@ ENTRY(kmain)
 /* process. */
 PHDRS
 {
-    text    PT_LOAD;
-    rodata  PT_LOAD;
-    data    PT_LOAD;
+    text    PT_LOAD FLAGS(0x5);
+    rodata  PT_LOAD FLAGS(0x4);
+    data    PT_LOAD FLAGS(0x7);
 }
 
 SECTIONS
