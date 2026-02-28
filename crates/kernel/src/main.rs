@@ -111,6 +111,7 @@ static MEM_MANAGER: Mutex<MemManager> = Mutex::new(MemManager::new());
 
 const INIT_LOAD_BUF_SIZE: usize = 2 * 1024 * 1024;
 static mut INIT_LOAD_BUF: [u8; INIT_LOAD_BUF_SIZE] = [0; INIT_LOAD_BUF_SIZE];
+
 const USER_MEM_POOL_SIZE: usize = 1024 * 1024;
 static mut USER_MEM_POOL: [u8; USER_MEM_POOL_SIZE] = [0; USER_MEM_POOL_SIZE];
 
@@ -174,20 +175,8 @@ extern "C" fn kmain() -> ! {
 
     let _ = writeln!(TTY.lock(), "[kernel] launching init @ {:#x}", entry_addr);
 
-    // Minimal single-tasking handoff placeholder: emit expected init flow on TTY/serial.
-    // (Real userspace mode/MMU separation is intentionally out of scope for this tiny prototype.)
-    let _ = writeln!(
-        TTY.lock(),
-        "[init] hello from userspace via write() syscall"
-    );
-    let _ = writeln!(TTY.lock(), "[init] type one line and press enter:");
-    let _ = writeln!(TTY.lock(), "[init] echo: typed-from-kernel");
-    let _ = writeln!(TTY.lock(), "[init] done");
-
-    unsafe { outb(0xF4, 0x10) };
-    loop {
-        unsafe { asm!("hlt") };
-    }
+    let entry: extern "C" fn() -> ! = unsafe { core::mem::transmute(entry_addr) };
+    entry()
 }
 
 fn load_init_image(
