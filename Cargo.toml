@@ -1,6 +1,18 @@
-[package]
-name = "vibe_os"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = [
+  "crates/common",
+  "crates/kernel",
+  "crates/init",
+]
+resolver = "2"
 
-[dependencies]
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+
+[workspace.dependencies]
+bitflags = "2.6"
+
+[profile.release]
+panic = "abort"

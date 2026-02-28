@@ -1,0 +1,10 @@
+[package]
+build = "build.rs"
+name = "init"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+common = { path = "../common" }
+

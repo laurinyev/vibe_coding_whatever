@@ -1,30 +1,26 @@
-# TinyOS (Rust)
+# Tiny Limine OS (x86_64)
 
-I made this because I was **bored to shit** and wanted to try **vibecoding**.
+This repository now contains a **real bootable prototype OS**:
 
-## What this is
+- Boots with **Limine** on x86_64.
+- Runs a tiny single-task kernel.
+- Reads a **USTAR initramfs** module and locates `init.elf`.
+- Parses ELF64 and transfers control to `init.elf`.
+- Exposes two syscall numbers (`read`, `write`) and Unix-like fd values (`stdin=0`, `stdout=1`).
+- Includes headless QEMU automation scripts/tests.
 
-This is a tiny operating-system-style simulator written in Rust. It is not a real bootable kernel, but it mimics a few core OS concepts:
+## Layout
 
-- Process table
-- Round-robin scheduler ticks
-- Process creation (`spawn`) and termination (`kill`)
-- Basic memory usage simulation
-- Tiny shell loop for commands
+- `crates/common`: shared ABI + USTAR/ELF parsers.
+- `crates/kernel`: no_std kernel entry and syscall handling.
+- `crates/init`: no_std user init program calling read/write.
+- `scripts/`: image build + QEMU run harness.
+- `tests/`: host + headless smoke checks.
 
-## Run
+## Quickstart
 
 ```bash
-cargo run
+cargo test -p common
+./scripts/build_image.sh
+./scripts/run_qemu_headless.sh
 ```
-
-## Commands
-
-- `help`
-- `ps`
-- `spawn <name>`
-- `kill <pid>`
-- `tick`
-- `mem`
-- `uptime`
-- `exit`
