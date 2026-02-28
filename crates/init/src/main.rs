@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use core::arch::asm;
 use common::syscall::{FD_STDIN, FD_STDOUT, SYS_READ, SYS_WRITE};
+use core::arch::asm;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo<'_>) -> ! {

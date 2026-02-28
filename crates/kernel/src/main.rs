@@ -1,12 +1,12 @@
 #![no_std]
 #![no_main]
 
-use core::arch::{asm, global_asm};
-use core::fmt::{self, Write};
-use core::ptr;
 use common::elf::{ProgramHeader, parse_elf64};
 use common::syscall::{FD_STDIN, FD_STDOUT, SYS_READ, SYS_WRITE};
 use common::ustar::find_file;
+use core::arch::{asm, global_asm};
+use core::fmt::{self, Write};
+use core::ptr;
 use limine::BaseRevision;
 use limine::request::{FramebufferRequest, ModuleRequest, RequestsEndMarker, RequestsStartMarker};
 use spin::Mutex;
@@ -32,12 +32,6 @@ static REQUESTS_END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
 
 global_asm!(
     r#"
-.global _start
-_start:
-    call kmain
-1:  hlt
-    jmp 1b
-
 .global syscall_int80
 syscall_int80:
     push rdi
@@ -262,10 +256,7 @@ fn serial_init() {
 }
 
 fn serial_write_byte(byte: u8) {
-    unsafe {
-        while (inb(COM1 + 5) & 0x20) == 0 {}
-        outb(COM1, byte);
-    }
+    unsafe { outb(COM1, byte) }
 }
 
 fn debugcon_write_byte(byte: u8) {
@@ -274,10 +265,4 @@ fn debugcon_write_byte(byte: u8) {
 
 unsafe fn outb(port: u16, val: u8) {
     unsafe { asm!("out dx, al", in("dx") port, in("al") val, options(nostack, nomem)) }
-}
-
-unsafe fn inb(port: u16) -> u8 {
-    let mut val: u8;
-    unsafe { asm!("in al, dx", in("dx") port, out("al") val, options(nostack, nomem)) }
-    val
 }

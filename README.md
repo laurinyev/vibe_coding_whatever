@@ -24,3 +24,7 @@ cargo test -p common
 ./scripts/build_image.sh
 ./scripts/run_qemu_headless.sh
 ```
+
+## License
+
+AGPL-3.0-only.

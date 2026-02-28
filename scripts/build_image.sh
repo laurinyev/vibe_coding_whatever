@@ -11,7 +11,7 @@ mkdir -p "$BUILD/root/boot"
 cargo build --manifest-path "$ROOT/crates/kernel/Cargo.toml" --release --target x86_64-unknown-none
 cargo build --manifest-path "$ROOT/crates/init/Cargo.toml" --release --target x86_64-unknown-none
 
-cp "$ROOT/target/x86_64-unknown-none/release/kernel" "$BUILD/root/boot/kernel.elf"
+cp "$ROOT/target/x86_64-unknown-none/release/kernel" "$BUILD/root/boot/kernel"
 cp "$ROOT/target/x86_64-unknown-none/release/init" "$BUILD/init.elf"
 
 ( cd "$BUILD" && tar --format=ustar -cf initramfs.tar init.elf )
