@@ -15,7 +15,5 @@ qemu-system-x86_64 \
   -display none \
   -no-reboot \
   -no-shutdown \
-  -serial none \
-  -debugcon stdio \
-  -global isa-debugcon.iobase=0xe9 \
+  -serial stdio \
   -device isa-debug-exit,iobase=0xf4,iosize=0x04

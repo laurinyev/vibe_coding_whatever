@@ -71,7 +71,6 @@ impl Tty {
 
     fn putc(&mut self, c: u8) {
         serial_write_byte(c);
-        debugcon_write_byte(c);
 
         if c == b'\n' {
             self.x = 8;
@@ -241,7 +240,6 @@ extern "C" fn syscall_dispatch(nr: u64, fd: u64, ptr: u64, len: u64) -> i64 {
 }
 
 const COM1: u16 = 0x3F8;
-const DEBUGCON: u16 = 0xE9;
 
 fn serial_init() {
     unsafe {
@@ -257,10 +255,6 @@ fn serial_init() {
 
 fn serial_write_byte(byte: u8) {
     unsafe { outb(COM1, byte) }
-}
-
-fn debugcon_write_byte(byte: u8) {
-    unsafe { outb(DEBUGCON, byte) }
 }
 
 unsafe fn outb(port: u16, val: u8) {
