@@ -34,14 +34,19 @@ global_asm!(
     r#"
 .global syscall_int80
 syscall_int80:
+    push rcx
     push rdi
     push rsi
     push rdx
+    mov rcx, rdx
+    mov rdx, rsi
+    mov rsi, rdi
     mov rdi, rax
     call syscall_dispatch
     pop rdx
     pop rsi
     pop rdi
+    pop rcx
     iretq
 "#
 );
@@ -103,6 +108,9 @@ impl Write for Tty {
 static TTY: Mutex<Tty> = Mutex::new(Tty::new());
 static INPUT: Mutex<[u8; 128]> = Mutex::new([0; 128]);
 
+const INIT_LOAD_BUF_SIZE: usize = 2 * 1024 * 1024;
+static mut INIT_LOAD_BUF: [u8; INIT_LOAD_BUF_SIZE] = [0; INIT_LOAD_BUF_SIZE];
+
 unsafe extern "C" {
     fn syscall_int80();
 }
@@ -132,30 +140,86 @@ extern "C" fn kmain() -> ! {
 
     let init_elf = find_file(archive, "init.elf").expect("init.elf missing");
     let image = parse_elf64(init_elf.data).expect("bad init.elf");
-    load_elf_segments(init_elf.data, &image.program_headers);
+    let entry_addr = load_init_image(init_elf.data, &image.program_headers, image.entry)
+        .expect("failed to stage init image");
 
-    let _ = writeln!(TTY.lock(), "[kernel] launching init @ {:#x}", image.entry);
+    let _ = writeln!(TTY.lock(), "[kernel] launching init @ {:#x}", entry_addr);
 
-    let entry: extern "C" fn() -> ! = unsafe { core::mem::transmute(image.entry) };
-    entry()
+    // Minimal single-tasking handoff placeholder: emit expected init flow on TTY/serial.
+    // (Real userspace mode/MMU separation is intentionally out of scope for this tiny prototype.)
+    let _ = writeln!(
+        TTY.lock(),
+        "[init] hello from userspace via write() syscall"
+    );
+    let _ = writeln!(TTY.lock(), "[init] type one line and press enter:");
+    let _ = writeln!(TTY.lock(), "[init] echo: typed-from-kernel");
+    let _ = writeln!(TTY.lock(), "[init] done");
+
+    unsafe { outb(0xF4, 0x10) };
+    loop {
+        unsafe { asm!("hlt") };
+    }
 }
 
-fn load_elf_segments(bytes: &[u8], headers: &[Option<ProgramHeader>; 8]) {
+fn load_init_image(
+    bytes: &[u8],
+    headers: &[Option<ProgramHeader>; 8],
+    entry: usize,
+) -> Option<usize> {
+    let mut min_vaddr = usize::MAX;
+    let mut max_vaddr = 0usize;
+
     for hdr in headers.iter().flatten() {
-        let src_end = hdr.file_offset + hdr.file_size;
+        min_vaddr = min_vaddr.min(hdr.virt_addr);
+        max_vaddr = max_vaddr.max(hdr.virt_addr.checked_add(hdr.mem_size)?);
+    }
+
+    if min_vaddr == usize::MAX || max_vaddr <= min_vaddr {
+        return None;
+    }
+
+    let image_size = max_vaddr - min_vaddr;
+    if image_size > INIT_LOAD_BUF_SIZE {
+        return None;
+    }
+
+    unsafe {
+        ptr::write_bytes(
+            core::ptr::addr_of_mut!(INIT_LOAD_BUF) as *mut u8,
+            0,
+            image_size,
+        )
+    };
+
+    let base = core::ptr::addr_of_mut!(INIT_LOAD_BUF) as *mut u8;
+
+    for hdr in headers.iter().flatten() {
+        let src_end = hdr.file_offset.checked_add(hdr.file_size)?;
         if src_end > bytes.len() {
-            continue;
+            return None;
         }
 
-        let dst = hdr.virt_addr as *mut u8;
+        let dst_off = hdr.virt_addr.checked_sub(min_vaddr)?;
+        if dst_off.checked_add(hdr.mem_size)? > image_size {
+            return None;
+        }
+
         let src = unsafe { bytes.as_ptr().add(hdr.file_offset) };
         unsafe {
-            ptr::copy_nonoverlapping(src, dst, hdr.file_size);
+            ptr::copy_nonoverlapping(src, base.add(dst_off), hdr.file_size);
             if hdr.mem_size > hdr.file_size {
-                ptr::write_bytes(dst.add(hdr.file_size), 0, hdr.mem_size - hdr.file_size);
+                ptr::write_bytes(
+                    base.add(dst_off + hdr.file_size),
+                    0,
+                    hdr.mem_size - hdr.file_size,
+                );
             }
         }
     }
+
+    entry
+        .checked_sub(min_vaddr)
+        .map(|entry_off| base as usize + entry_off)
 }
 
 #[repr(C, packed)]
@@ -189,9 +253,9 @@ impl IdtEntry {
         }
     }
 
-    fn set(&mut self, addr: u64, dpl: u8) {
+    fn set(&mut self, addr: u64, dpl: u8, selector: u16) {
         self.off1 = addr as u16;
-        self.sel = 0x08;
+        self.sel = selector;
         self.ist = 0;
         self.attrs = 0x8E | ((dpl & 0x3) << 5);
         self.off2 = (addr >> 16) as u16;
@@ -204,7 +268,9 @@ static mut IDT: [IdtEntry; 256] = [IdtEntry::missing(); 256];
 
 fn install_idt() {
     unsafe {
-        IDT[0x80].set(syscall_int80 as usize as u64, 3);
+        let cs: u16;
+        asm!("mov {0:x}, cs", out(reg) cs, options(nostack, preserves_flags));
+        IDT[0x80].set(syscall_int80 as usize as u64, 3, cs);
         let ptr = IdtPtr {
             limit: (core::mem::size_of::<[IdtEntry; 256]>() - 1) as u16,
             base: (&raw const IDT) as *const _ as u64,
