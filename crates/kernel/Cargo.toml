@@ -1,0 +1,12 @@
+[package]
+build = "build.rs"
+name = "kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+common = { path = "../common" }
+limine = "0.5"
+spin = "0.9"
+
