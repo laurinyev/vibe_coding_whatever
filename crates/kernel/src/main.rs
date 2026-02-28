@@ -179,6 +179,32 @@ extern "C" fn kmain() -> ! {
     entry()
 }
 
+fn rd16(b: &[u8], o: usize) -> Option<u16> {
+    Some(u16::from_le_bytes([*b.get(o)?, *b.get(o + 1)?]))
+}
+
+fn rd32(b: &[u8], o: usize) -> Option<u32> {
+    Some(u32::from_le_bytes([
+        *b.get(o)?,
+        *b.get(o + 1)?,
+        *b.get(o + 2)?,
+        *b.get(o + 3)?,
+    ]))
+}
+
+fn rd64(b: &[u8], o: usize) -> Option<u64> {
+    Some(u64::from_le_bytes([
+        *b.get(o)?,
+        *b.get(o + 1)?,
+        *b.get(o + 2)?,
+        *b.get(o + 3)?,
+        *b.get(o + 4)?,
+        *b.get(o + 5)?,
+        *b.get(o + 6)?,
+        *b.get(o + 7)?,
+    ]))
+}
+
 fn load_init_image(
     bytes: &[u8],
     headers: &[Option<ProgramHeader>; 8],
@@ -235,9 +261,76 @@ fn load_init_image(
         }
     }
 
+    let e_type = rd16(bytes, 16)?;
+    if e_type == 3 {
+        apply_relative_relocations(bytes, base as usize, min_vaddr)?;
+    }
+
     entry
         .checked_sub(min_vaddr)
         .map(|entry_off| base as usize + entry_off)
+}
+
+fn apply_relative_relocations(bytes: &[u8], base: usize, min_vaddr: usize) -> Option<()> {
+    let phoff = rd64(bytes, 32)? as usize;
+    let phentsize = rd16(bytes, 54)? as usize;
+    let phnum = rd16(bytes, 56)? as usize;
+
+    let mut rela_vaddr = 0usize;
+    let mut rela_size = 0usize;
+    let mut rela_ent = 24usize;
+
+    for i in 0..phnum {
+        let o = phoff + i * phentsize;
+        if rd32(bytes, o)? != 2 {
+            continue;
+        }
+        let dyn_off = rd64(bytes, o + 8)? as usize;
+        let dyn_size = rd64(bytes, o + 32)? as usize;
+        let end = dyn_off.checked_add(dyn_size)?;
+        if end > bytes.len() {
+            return None;
+        }
+
+        let mut d = dyn_off;
+        while d + 16 <= end {
+            let tag = rd64(bytes, d)? as i64;
+            let val = rd64(bytes, d + 8)? as usize;
+            match tag {
+                0 => break,
+                7 => rela_vaddr = val,
+                8 => rela_size = val,
+                9 => rela_ent = val,
+                _ => {}
+            }
+            d += 16;
+        }
+    }
+
+    if rela_vaddr == 0 || rela_size == 0 || rela_ent == 0 {
+        return Some(());
+    }
+
+    let rela_off = rela_vaddr.checked_sub(min_vaddr)?;
+    let mut off = base.checked_add(rela_off)?;
+    let end = off.checked_add(rela_size)?;
+
+    while off < end {
+        let r_offset = unsafe { *(off as *const u64) } as usize;
+        let r_info = unsafe { *((off + 8) as *const u64) };
+        let r_addend = unsafe { *((off + 16) as *const i64) } as isize;
+
+        let r_type = (r_info & 0xffff_ffff) as u32;
+        if r_type == 8 {
+            let dst = base.checked_add(r_offset.checked_sub(min_vaddr)?)? as *mut u64;
+            let val = (base as isize + r_addend) as u64;
+            unsafe { *dst = val };
+        }
+
+        off = off.checked_add(rela_ent)?;
+    }
+
+    Some(())
 }
 
 #[repr(C, packed)]

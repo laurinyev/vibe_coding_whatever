@@ -3,6 +3,9 @@ name = "mlibc"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+build = "build.rs"
 
 [dependencies]
-common = { path = "../common" }
+
+[build-dependencies]
+cc = "1.1"
