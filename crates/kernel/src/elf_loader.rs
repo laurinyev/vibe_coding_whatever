@@ -35,7 +35,7 @@ fn rd64(b: &[u8], o: usize) -> Option<u64> {
 
 pub fn load_init_image(
     bytes: &[u8],
-    headers: &[Option<ProgramHeader>; 8],
+    headers: &[Option<ProgramHeader>; 32],
     entry: usize,
 ) -> Option<usize> {
     let mut min_vaddr = usize::MAX;

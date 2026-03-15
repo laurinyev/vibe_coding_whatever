@@ -14,8 +14,8 @@ This repository now contains a **real bootable prototype OS**:
 - `crates/common`: shared ABI + USTAR/ELF parsers.
 - `crates/kernel`: no_std kernel entry, ELF loading, IDT/syscall setup, serial output, memory manager, and a stack-based process system.
 - `crates/init`: no_std Rust-only user init program with direct syscall wrappers (no libc layer).
-- `crates/testbin`: tiny no_std exec target used by init to validate fork+execve+exit/open behavior (including reading `test.txt` from initrd).
-- `crates/shell`: tiny no_std shell-like exec target used by non-test init builds.
+- `crates/testbin`: tiny no_std exec target used by init/shell to validate fork+execve+exit/open behavior (including reading `test.txt` from initrd).
+- `crates/shell`: tiny no_std shell-like exec target used by non-test init builds, launched as `/bin/shell.elf` by init.
 - `scripts/`: image build + QEMU run harness.
 - `tests/`: host + headless smoke checks.
 

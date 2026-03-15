@@ -9,7 +9,7 @@ mod syscall;
 const SPAWN_TARGET: &str = if cfg!(feature = "test-build") {
     "testbin.elf"
 } else {
-    "shell.elf"
+    "/bin/shell.elf"
 };
 
 #[panic_handler]

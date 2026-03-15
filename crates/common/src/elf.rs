@@ -11,7 +11,7 @@ pub struct ProgramHeader {
 pub struct ElfImage<'a> {
     pub entry: usize,
     pub data: &'a [u8],
-    pub program_headers: [Option<ProgramHeader>; 8],
+    pub program_headers: [Option<ProgramHeader>; 32],
 }
 
 fn rd16(b: &[u8], o: usize) -> Option<u16> {
@@ -51,7 +51,7 @@ pub fn parse_elf64(image: &[u8]) -> Option<ElfImage<'_>> {
     let phentsize = rd16(image, 54)? as usize;
     let phnum = rd16(image, 56)? as usize;
 
-    let mut headers = [None; 8];
+    let mut headers = [None; 32];
     let mut seen = 0usize;
 
     for i in 0..phnum {

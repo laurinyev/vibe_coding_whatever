@@ -103,7 +103,13 @@ extern "C" fn kmain() -> ! {
 fn load_named_entry(path: &str) -> Option<usize> {
     let archive =
         unsafe { core::slice::from_raw_parts(INITRAMFS_ADDR as *const u8, INITRAMFS_SIZE) };
-    let file = find_file(archive, path)?;
+
+    let cleaned = path.trim_start_matches('/');
+    let file = find_file(archive, cleaned).or_else(|| {
+        let basename = cleaned.rsplit('/').next()?;
+        find_file(archive, basename)
+    })?;
+
     let image = parse_elf64(file.data)?;
     elf_loader::load_init_image(file.data, &image.program_headers, image.entry)
 }

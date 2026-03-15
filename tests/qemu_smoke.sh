@@ -33,7 +33,7 @@ fi
 rg -q "\[kernel\] limine boot ok" "$LOG"
 rg -q "\[kernel\] process stack ready" "$LOG"
 rg -q "\[kernel\] fork: pushed child pid=" "$LOG"
-rg -q "\[init\] motd: Welcome to PromptOS" "$LOG"
+rg -q "\[init\] motd: Welcome to PromptOS - 100% certified vibecoded." "$LOG"
 rg -q "\[init\] child process is now running" "$LOG"
 rg -q "\[init\] child execve target: testbin.elf" "$LOG"
 rg -q "\[testbin\] hello from execve target" "$LOG"
