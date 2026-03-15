@@ -1,6 +1,6 @@
 use core::arch::asm;
 
-use common::syscall::{SYS_MEMMAP, SYS_READ, SYS_WRITE};
+use common::syscall::{SYS_EXECVE, SYS_EXIT, SYS_FORK, SYS_MEMMAP, SYS_READ, SYS_WRITE};
 
 fn syscall3(n: u64, a: u64, b: u64, c: u64) -> isize {
     let ret: i64;
@@ -35,4 +35,19 @@ pub fn memmap(length: usize) -> Result<*mut u8, isize> {
     } else {
         Ok(ret as usize as *mut u8)
     }
+}
+
+pub fn fork(parent_resume_rip: usize) -> Result<usize, isize> {
+    let ret = syscall3(SYS_FORK, 0, parent_resume_rip as u64, 0);
+    if ret < 0 { Err(ret) } else { Ok(ret as usize) }
+}
+
+pub fn execve(path: &str) -> Result<usize, isize> {
+    let ret = syscall3(SYS_EXECVE, path.len() as u64, path.as_ptr() as u64, 0);
+    if ret < 0 { Err(ret) } else { Ok(ret as usize) }
+}
+
+pub fn exit(code: i32) -> Result<usize, isize> {
+    let ret = syscall3(SYS_EXIT, code as u64, 0, 0);
+    if ret < 0 { Err(ret) } else { Ok(ret as usize) }
 }

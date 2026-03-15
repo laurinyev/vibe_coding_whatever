@@ -2,7 +2,10 @@ use common::elf::ProgramHeader;
 use core::ptr;
 
 const INIT_LOAD_BUF_SIZE: usize = 2 * 1024 * 1024;
-static mut INIT_LOAD_BUF: [u8; INIT_LOAD_BUF_SIZE] = [0; INIT_LOAD_BUF_SIZE];
+const INIT_LOAD_SLOTS: usize = 16;
+static mut INIT_LOAD_BUFS: [[u8; INIT_LOAD_BUF_SIZE]; INIT_LOAD_SLOTS] =
+    [[0; INIT_LOAD_BUF_SIZE]; INIT_LOAD_SLOTS];
+static mut NEXT_LOAD_SLOT: usize = 0;
 
 fn rd16(b: &[u8], o: usize) -> Option<u16> {
     Some(u16::from_le_bytes([*b.get(o)?, *b.get(o + 1)?]))
@@ -52,15 +55,13 @@ pub fn load_init_image(
         return None;
     }
 
-    unsafe {
-        ptr::write_bytes(
-            core::ptr::addr_of_mut!(INIT_LOAD_BUF) as *mut u8,
-            0,
-            image_size,
-        )
+    let base = unsafe {
+        let slot = NEXT_LOAD_SLOT % INIT_LOAD_SLOTS;
+        NEXT_LOAD_SLOT = NEXT_LOAD_SLOT.wrapping_add(1);
+        core::ptr::addr_of_mut!(INIT_LOAD_BUFS[slot]) as *mut u8
     };
 
-    let base = core::ptr::addr_of_mut!(INIT_LOAD_BUF) as *mut u8;
+    unsafe { ptr::write_bytes(base, 0, image_size) };
 
     for hdr in headers.iter().flatten() {
         let src_end = hdr.file_offset.checked_add(hdr.file_size)?;

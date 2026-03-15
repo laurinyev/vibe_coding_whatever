@@ -6,14 +6,16 @@ This repository now contains a **real bootable prototype OS**:
 - Runs a tiny single-task kernel.
 - Reads a **USTAR initramfs** module and locates `init.elf`.
 - Parses ELF64 and transfers control to `init.elf`.
-- Exposes three syscall numbers (`read`, `write`, `memmap`) and Unix-like fd values (`stdin=0`, `stdout=1`).
+- Exposes syscalls for `read`, `write`, `memmap`, `fork`, `execve`, and `exit` with Unix-like fd values (`stdin=0`, `stdout=1`).
 - Includes headless QEMU automation scripts/tests.
 
 ## Layout
 
 - `crates/common`: shared ABI + USTAR/ELF parsers.
-- `crates/kernel`: no_std kernel entry, ELF loading, IDT/syscall setup, serial output, and memory manager.
+- `crates/kernel`: no_std kernel entry, ELF loading, IDT/syscall setup, serial output, memory manager, and a stack-based process system.
 - `crates/init`: no_std Rust-only user init program with direct syscall wrappers (no libc layer).
+- `crates/testbin`: tiny no_std exec target used by init to validate fork+execve+exit behavior.
+- `crates/shell`: tiny no_std shell-like exec target used by non-test init builds.
 - `scripts/`: image build + QEMU run harness.
 - `tests/`: host + headless smoke checks.
 
@@ -23,6 +25,7 @@ This repository now contains a **real bootable prototype OS**:
 cargo test -p common
 ./scripts/build_image.sh
 ./scripts/run_qemu_headless.sh
+# smoke path uses: INIT_FEATURES=test-build ./scripts/build_image.sh
 ```
 
 ## Note

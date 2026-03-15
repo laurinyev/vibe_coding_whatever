@@ -6,6 +6,12 @@ use core::arch::asm;
 
 mod syscall;
 
+const SPAWN_TARGET: &str = if cfg!(feature = "test-build") {
+    "testbin.elf"
+} else {
+    "shell.elf"
+};
+
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo<'_>) -> ! {
     loop {
@@ -26,6 +32,27 @@ pub extern "C" fn _start() -> ! {
         let _ = syscall::write(FD_STDOUT, b"\n");
     }
 
+    let _ = syscall::write(FD_STDOUT, b"[init] trying stack-process fork()\n");
+    let pid = syscall::fork(parent_resume as usize).unwrap_or(0);
+    if pid == 0 {
+        let _ = syscall::write(FD_STDOUT, b"[init] child process is now running\n");
+        let _ = syscall::write(FD_STDOUT, b"[init] child execve target: ");
+        let _ = syscall::write(FD_STDOUT, SPAWN_TARGET.as_bytes());
+        let _ = syscall::write(FD_STDOUT, b"\n");
+        let _ = syscall::execve(SPAWN_TARGET);
+        let _ = syscall::write(FD_STDOUT, b"[init] child execve failed, exiting\n");
+        let _ = syscall::exit(1);
+    }
+
+    parent_resume()
+}
+
+extern "C" fn parent_resume() -> ! {
+    let _ = syscall::write(FD_STDOUT, b"[init] parent resumed after child exit\n");
+    interaction_and_shutdown()
+}
+
+fn interaction_and_shutdown() -> ! {
     let _ = syscall::write(FD_STDOUT, b"[init] type one line and press enter:\n");
     let mut buf = [0u8; 64];
     let n = syscall::read(FD_STDIN, &mut buf).unwrap_or(0);
