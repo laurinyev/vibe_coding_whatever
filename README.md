@@ -12,9 +12,8 @@ This repository now contains a **real bootable prototype OS**:
 ## Layout
 
 - `crates/common`: shared ABI + USTAR/ELF parsers.
-- `crates/kernel`: no_std kernel entry and syscall handling.
-- `crates/init`: no_std user init program using the mlibc compatibility layer.
-- `crates/mlibc`: C-compiled shim that fetches real `managarm/mlibc` sources and provides a minimal std-port style layer (terminal I/O + memmap stubs).
+- `crates/kernel`: no_std kernel entry, ELF loading, IDT/syscall setup, serial output, and memory manager.
+- `crates/init`: no_std Rust-only user init program with direct syscall wrappers (no libc layer).
 - `scripts/`: image build + QEMU run harness.
 - `tests/`: host + headless smoke checks.
 
@@ -25,6 +24,10 @@ cargo test -p common
 ./scripts/build_image.sh
 ./scripts/run_qemu_headless.sh
 ```
+
+## Note
+
+This was made 100% by AI, if you don't like that, check out [Boonix](https://github.com/laurinyev/boonix)!
 
 ## License
 
