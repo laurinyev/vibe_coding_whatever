@@ -7,9 +7,11 @@ mkdir -p "$ROOT/build"
 
 if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
   echo "qemu-system-x86_64 missing; installing" >&2
-  sudo apt-get update
-  sudo apt-get install -y qemu-system-x86 xorriso make gcc mtools
+  apt-get update
+  apt-get install -y qemu-system-x86 xorriso make gcc mtools
 fi
+
+INIT_FEATURES=test-build "$ROOT/scripts/build_image.sh"
 
 set +e
 (timeout 40 "$ROOT/scripts/run_qemu_headless.sh" >"$LOG" 2>&1)
@@ -29,7 +31,16 @@ if [[ $status -ne 33 ]]; then
 fi
 
 rg -q "\[kernel\] limine boot ok" "$LOG"
-rg -q "\[init\] hello from userspace" "$LOG"
+rg -q "\[kernel\] process stack ready" "$LOG"
+rg -q "\[kernel\] fork: pushed child pid=" "$LOG"
+rg -q "\[init\] motd: Welcome to PromptOS - 100% certified vibecoded." "$LOG"
+rg -q "\[init\] child process is now running" "$LOG"
+rg -q "\[init\] child execve target: testbin.elf" "$LOG"
+rg -q "\[testbin\] hello from execve target" "$LOG"
+rg -q "\[testbin\] read test.txt: hell" "$LOG"
+rg -q "\[kernel\] execve: replaced current process image with testbin.elf" "$LOG"
+rg -q "\[kernel\] exit\(0\): popped current process" "$LOG"
+rg -q "\[init\] parent resumed after child exit" "$LOG"
 rg -q "\[init\] done" "$LOG"
 
 echo "qemu smoke OK"

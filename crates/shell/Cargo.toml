@@ -1,13 +1,9 @@
 [package]
-build = "build.rs"
-name = "init"
+name = "shell"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+build = "build.rs"
 
 [dependencies]
 common = { path = "../common" }
-
-[features]
-default = []
-test-build = []
