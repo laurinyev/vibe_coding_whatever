@@ -4,6 +4,8 @@
 use common::syscall::{FD_STDIN, FD_STDOUT};
 use core::arch::asm;
 
+mod syscall;
+
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo<'_>) -> ! {
     loop {
@@ -13,23 +15,23 @@ fn panic(_: &core::panic::PanicInfo<'_>) -> ! {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    let _ = mlibc::write(
+    let _ = syscall::write(
         FD_STDOUT,
         b"[init] hello from userspace via write() syscall\n",
     );
 
-    if let Ok(mapped) = mlibc::memmap(16 * 1024) {
-        let _ = mlibc::write(FD_STDOUT, b"[init] memmap ok at ");
+    if let Ok(mapped) = syscall::memmap(16 * 1024) {
+        let _ = syscall::write(FD_STDOUT, b"[init] memmap ok at ");
         write_hex(mapped as usize);
-        let _ = mlibc::write(FD_STDOUT, b"\n");
+        let _ = syscall::write(FD_STDOUT, b"\n");
     }
 
-    let _ = mlibc::write(FD_STDOUT, b"[init] type one line and press enter:\n");
+    let _ = syscall::write(FD_STDOUT, b"[init] type one line and press enter:\n");
     let mut buf = [0u8; 64];
-    let n = mlibc::read(FD_STDIN, &mut buf).unwrap_or(0);
-    let _ = mlibc::write(FD_STDOUT, b"[init] echo: ");
-    let _ = mlibc::write(FD_STDOUT, &buf[..n]);
-    let _ = mlibc::write(FD_STDOUT, b"[init] done\n");
+    let n = syscall::read(FD_STDIN, &mut buf).unwrap_or(0);
+    let _ = syscall::write(FD_STDOUT, b"[init] echo: ");
+    let _ = syscall::write(FD_STDOUT, &buf[..n]);
+    let _ = syscall::write(FD_STDOUT, b"[init] done\n");
 
     unsafe {
         asm!("out dx, al", in("dx") 0xF4u16, in("al") 0x10u8, options(nostack, nomem));
@@ -53,5 +55,5 @@ fn write_hex(mut v: usize) {
         };
         v >>= 4;
     }
-    let _ = mlibc::write(FD_STDOUT, &out);
+    let _ = syscall::write(FD_STDOUT, &out);
 }
