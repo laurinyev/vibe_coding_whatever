@@ -6,12 +6,11 @@ mod interrupts;
 mod memory;
 mod serial;
 mod tty;
+mod vfs;
 
 use common::elf::parse_elf64;
 use common::process::ProcessStack;
-use common::syscall::{
-    FD_STDIN, FD_STDOUT, SYS_EXECVE, SYS_EXIT, SYS_FORK, SYS_MEMMAP, SYS_READ, SYS_WRITE,
-};
+use common::syscall::{SYS_EXECVE, SYS_EXIT, SYS_FORK, SYS_MEMMAP, SYS_OPEN, SYS_READ, SYS_WRITE};
 use common::ustar::find_file;
 use core::arch::asm;
 use core::fmt::Write;
@@ -47,7 +46,6 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     }
 }
 
-static INPUT: Mutex<[u8; 128]> = Mutex::new([0; 128]);
 static PROCESS_STACK: Mutex<ProcessStack<16>> = Mutex::new(ProcessStack::new());
 
 static mut INITRAMFS_ADDR: usize = 0;
@@ -83,6 +81,7 @@ extern "C" fn kmain() -> ! {
         INITRAMFS_ADDR = module.addr() as usize;
         INITRAMFS_SIZE = module.size() as usize;
     }
+    vfs::init(unsafe { INITRAMFS_ADDR }, unsafe { INITRAMFS_SIZE });
 
     let entry_addr = load_init_entry().expect("failed to stage init image");
     let root_pid = PROCESS_STACK
@@ -116,20 +115,56 @@ fn load_init_entry() -> Option<usize> {
 #[unsafe(no_mangle)]
 extern "C" fn syscall_dispatch(nr: u64, fd: u64, ptr: u64, len: u64) -> i64 {
     match nr {
-        SYS_WRITE if fd == FD_STDOUT => {
+        SYS_OPEN => {
+            let bytes = unsafe { core::slice::from_raw_parts(ptr as *const u8, fd as usize) };
+            let Ok(path) = core::str::from_utf8(bytes) else {
+                return -22;
+            };
+            let Some(handle) = vfs::open(path) else {
+                return -2;
+            };
+            let mut stack = PROCESS_STACK.lock();
+            let Some(proc) = stack.current_mut() else {
+                return -3;
+            };
+            proc.install_fd(handle).map(|n| n as i64).unwrap_or(-24)
+        }
+        SYS_WRITE => {
             let bytes = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
-            if let Ok(s) = core::str::from_utf8(bytes) {
-                let _ = write!(TTY.lock(), "{s}");
-                len as i64
-            } else {
-                -22
+            let mut stack = PROCESS_STACK.lock();
+            let Some(proc) = stack.current_mut() else {
+                return -3;
+            };
+            let Some((handle, _)) = proc.resolve_fd(fd) else {
+                return -9;
+            };
+            match vfs::write(handle, bytes) {
+                Ok(n) => n as i64,
+                Err(e) => e,
+            }
+        }
+        SYS_READ => {
+            let mut stack = PROCESS_STACK.lock();
+            let Some(proc) = stack.current_mut() else {
+                return -3;
+            };
+            let Some((handle, offset)) = proc.resolve_fd(fd) else {
+                return -9;
+            };
+            let dst = unsafe { core::slice::from_raw_parts_mut(ptr as *mut u8, len as usize) };
+            match vfs::read(handle, offset, dst) {
+                Ok(n) => {
+                    let _ = proc.advance_fd(fd, n);
+                    n as i64
+                }
+                Err(e) => e,
             }
         }
         SYS_MEMMAP => {
-            let len = fd as usize;
+            let req_len = fd as usize;
             memory::MEM_MANAGER
                 .lock()
-                .memmap(len)
+                .memmap(req_len)
                 .map(|addr| addr as i64)
                 .unwrap_or(-12)
         }
@@ -192,15 +227,6 @@ extern "C" fn syscall_dispatch(nr: u64, fd: u64, ptr: u64, len: u64) -> i64 {
                 }
                 0
             }
-        }
-        SYS_READ if fd == FD_STDIN => {
-            let mut input = INPUT.lock();
-            let canned = b"typed-from-kernel\n";
-            input[..canned.len()].copy_from_slice(canned);
-            let n = core::cmp::min(len as usize, canned.len());
-            let dst = unsafe { core::slice::from_raw_parts_mut(ptr as *mut u8, n) };
-            dst.copy_from_slice(&input[..n]);
-            n as i64
         }
         _ => -38,
     }

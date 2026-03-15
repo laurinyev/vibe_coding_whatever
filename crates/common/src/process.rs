@@ -1,5 +1,8 @@
 #![allow(clippy::module_name_repetitions)]
 
+pub const PROCESS_FD_CAPACITY: usize = 8;
+pub const FD_NONE: u64 = u64::MAX;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ProcessContext {
     pub rip: usize,
@@ -17,18 +20,51 @@ impl ProcessContext {
 pub struct Process {
     pub pid: u64,
     pub pagemap: usize,
-    pub fds: [u64; 4],
+    pub fds: [u64; PROCESS_FD_CAPACITY],
+    pub fd_offsets: [usize; PROCESS_FD_CAPACITY],
     pub context: ProcessContext,
 }
 
 impl Process {
     pub const fn new(pid: u64, entry: usize) -> Self {
+        let mut fds = [FD_NONE; PROCESS_FD_CAPACITY];
+        fds[0] = 0;
+        fds[1] = 1;
+        fds[2] = 2;
         Self {
             pid,
             pagemap: pid as usize * 0x1000,
-            fds: [0, 1, 2, 3],
+            fds,
+            fd_offsets: [0; PROCESS_FD_CAPACITY],
             context: ProcessContext::new(entry, 0),
         }
+    }
+
+    pub fn resolve_fd(&self, fd: u64) -> Option<(u64, usize)> {
+        let idx = usize::try_from(fd).ok()?;
+        let handle = *self.fds.get(idx)?;
+        if handle == FD_NONE {
+            return None;
+        }
+        Some((handle, self.fd_offsets[idx]))
+    }
+
+    pub fn advance_fd(&mut self, fd: u64, amount: usize) -> Option<()> {
+        let idx = usize::try_from(fd).ok()?;
+        let off = self.fd_offsets.get_mut(idx)?;
+        *off = off.checked_add(amount)?;
+        Some(())
+    }
+
+    pub fn install_fd(&mut self, handle: u64) -> Option<u64> {
+        for i in 3..PROCESS_FD_CAPACITY {
+            if self.fds[i] == FD_NONE {
+                self.fds[i] = handle;
+                self.fd_offsets[i] = 0;
+                return Some(i as u64);
+            }
+        }
+        None
     }
 }
 
@@ -145,5 +181,14 @@ mod tests {
         stack.push_initial(0x1111).expect("initial");
         stack.exec_current(0x2222).expect("exec");
         assert_eq!(stack.current().expect("proc").context.rip, 0x2222);
+    }
+
+    #[test]
+    fn install_and_resolve_fd() {
+        let mut stack: ProcessStack<2> = ProcessStack::new();
+        stack.push_initial(0x1000).expect("initial");
+        let proc = stack.current_mut().expect("proc");
+        let fd = proc.install_fd(123).expect("fd");
+        assert_eq!(proc.resolve_fd(fd), Some((123, 0)));
     }
 }

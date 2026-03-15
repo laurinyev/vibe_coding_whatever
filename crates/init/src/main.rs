@@ -32,6 +32,8 @@ pub extern "C" fn _start() -> ! {
         let _ = syscall::write(FD_STDOUT, b"\n");
     }
 
+    print_motd();
+
     let _ = syscall::write(FD_STDOUT, b"[init] trying stack-process fork()\n");
     let pid = syscall::fork(parent_resume as usize).unwrap_or(0);
     if pid == 0 {
@@ -50,6 +52,25 @@ pub extern "C" fn _start() -> ! {
 extern "C" fn parent_resume() -> ! {
     let _ = syscall::write(FD_STDOUT, b"[init] parent resumed after child exit\n");
     interaction_and_shutdown()
+}
+
+fn print_motd() {
+    match syscall::open("motd.txt") {
+        Ok(fd) => {
+            let _ = syscall::write(FD_STDOUT, b"[init] motd: ");
+            let mut buf = [0u8; 64];
+            loop {
+                let n = syscall::read(fd, &mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                let _ = syscall::write(FD_STDOUT, &buf[..n]);
+            }
+        }
+        Err(_) => {
+            let _ = syscall::write(FD_STDOUT, b"[init] motd unavailable\n");
+        }
+    }
 }
 
 fn interaction_and_shutdown() -> ! {

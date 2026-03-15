@@ -53,3 +53,10 @@ pub static TTY: Mutex<Tty> = Mutex::new(Tty::new());
 pub fn set_framebuffer(framebuffer: limine::framebuffer::Framebuffer<'static>) {
     TTY.lock().fb = Some(framebuffer);
 }
+
+pub fn write_bytes(bytes: &[u8]) {
+    let mut tty = TTY.lock();
+    for &b in bytes {
+        tty.putc(b);
+    }
+}
