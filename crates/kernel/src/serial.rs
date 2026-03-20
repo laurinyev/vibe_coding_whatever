@@ -28,6 +28,15 @@ pub fn serial_try_read_byte() -> Option<u8> {
     }
 }
 
+pub fn serial_read_byte_blocking() -> u8 {
+    loop {
+        if let Some(byte) = serial_try_read_byte() {
+            return byte;
+        }
+        core::hint::spin_loop();
+    }
+}
+
 unsafe fn outb(port: u16, val: u8) {
     unsafe { asm!("out dx, al", in("dx") port, in("al") val, options(nostack, nomem)) }
 }

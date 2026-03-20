@@ -1,4 +1,4 @@
-use crate::serial::serial_try_read_byte;
+use crate::serial::{serial_read_byte_blocking, serial_try_read_byte, serial_write_byte};
 use crate::tty::write_bytes;
 use common::ustar::find_file;
 use spin::Mutex;
@@ -78,13 +78,28 @@ pub fn read(handle: u64, offset: usize, dst: &mut [u8]) -> Result<usize, i64> {
     let node = node_for(handle).ok_or(-9)?;
     match node {
         Node::DevStdin => {
+            if dst.is_empty() {
+                return Ok(0);
+            }
+
             let mut n = 0;
             while n < dst.len() {
-                let Some(b) = serial_try_read_byte() else {
-                    break;
+                let mut b = if n == 0 {
+                    serial_read_byte_blocking()
+                } else {
+                    let Some(byte) = serial_try_read_byte() else {
+                        break;
+                    };
+                    byte
                 };
+
+                if b == b'\r' {
+                    b = b'\n';
+                }
+
                 dst[n] = b;
                 n += 1;
+                serial_write_byte(b);
                 if b == b'\n' {
                     break;
                 }
