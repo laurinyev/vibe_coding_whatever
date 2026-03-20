@@ -3,7 +3,8 @@ members = [
   "crates/common",
   "crates/kernel",
   "crates/init",
-  "crates/mlibc",
+  "crates/testbin",
+  "crates/shell",
 ]
 resolver = "2"
 
