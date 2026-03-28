@@ -1,12 +1,13 @@
 use crate::serial::{serial_read_byte_blocking, serial_try_read_byte, serial_write_byte};
-use crate::tty::write_bytes;
+use crate::tty::{framebuffer_info, framebuffer_read, framebuffer_write, write_bytes};
 use common::ustar::find_file;
 use spin::Mutex;
 
 const HANDLE_STDIN: u64 = 0;
 const HANDLE_STDOUT: u64 = 1;
 const HANDLE_STDERR: u64 = 2;
-const HANDLE_BASE_INITRD: u64 = 3;
+const HANDLE_FB0: u64 = 3;
+const HANDLE_BASE_INITRD: u64 = 4;
 const MAX_OPEN_FILES: usize = 32;
 
 #[derive(Clone, Copy)]
@@ -14,6 +15,7 @@ enum Node {
     DevStdin,
     DevStdout,
     DevStderr,
+    DevFramebuffer,
     Initrd { data_addr: usize, len: usize },
 }
 
@@ -29,6 +31,7 @@ impl VfsState {
         nodes[0] = Some(Node::DevStdin);
         nodes[1] = Some(Node::DevStdout);
         nodes[2] = Some(Node::DevStderr);
+        nodes[3] = Some(Node::DevFramebuffer);
         Self {
             initrd_addr: 0,
             initrd_size: 0,
@@ -54,6 +57,9 @@ pub fn open(path: &str) -> Option<u64> {
     }
     if path == "/dev/stderr" || path == "dev/stderr" {
         return Some(HANDLE_STDERR);
+    }
+    if path == "/dev/fb0" || path == "dev/fb0" {
+        return Some(HANDLE_FB0);
     }
 
     let clean = path.trim_start_matches('/');
@@ -116,6 +122,18 @@ pub fn read(handle: u64, offset: usize, dst: &mut [u8]) -> Result<usize, i64> {
             dst[..n].copy_from_slice(src);
             Ok(n)
         }
+        Node::DevFramebuffer => {
+            if offset == 0 && dst.len() >= 32 {
+                if let Some(info) = framebuffer_info() {
+                    dst[..8].copy_from_slice(&(info.width as u64).to_le_bytes());
+                    dst[8..16].copy_from_slice(&(info.height as u64).to_le_bytes());
+                    dst[16..24].copy_from_slice(&(info.pitch as u64).to_le_bytes());
+                    dst[24..32].copy_from_slice(&(info.bytes_per_pixel as u64).to_le_bytes());
+                    return Ok(32);
+                }
+            }
+            Ok(framebuffer_read(offset, dst))
+        }
         Node::DevStdout | Node::DevStderr => Err(-9),
     }
 }
@@ -127,6 +145,7 @@ pub fn write(handle: u64, bytes: &[u8]) -> Result<usize, i64> {
             write_bytes(bytes);
             Ok(bytes.len())
         }
+        Node::DevFramebuffer => Ok(framebuffer_write(bytes)),
         Node::DevStdin | Node::Initrd { .. } => Err(-9),
     }
 }

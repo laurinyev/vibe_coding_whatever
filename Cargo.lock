@@ -16,6 +16,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fbfill"
+version = "0.1.0"
+dependencies = [
+ "common",
+]
+
+[[package]]
 name = "init"
 version = "0.1.0"
 dependencies = [

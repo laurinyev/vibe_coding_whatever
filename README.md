@@ -16,6 +16,7 @@ This repository now contains a **real bootable prototype OS**:
 - `crates/init`: no_std Rust-only user init program with direct syscall wrappers (no libc layer).
 - `crates/testbin`: tiny no_std exec target used by init/shell to validate fork+execve+exit/open behavior (including reading `test.txt` from initrd).
 - `crates/shell`: tiny no_std shell-like exec target used by non-test init builds, launched as `/bin/shell.elf` by init.
+- `crates/fbfill`: tiny no_std utility that opens `/dev/fb0` and fills the framebuffer blue.
 - `scripts/`: image build + QEMU run harness.
 - `tests/`: host + headless smoke checks.
 
