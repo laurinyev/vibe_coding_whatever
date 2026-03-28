@@ -45,12 +45,14 @@ fn read_line(buf: &mut [u8]) -> usize {
             continue;
         }
 
+        let c = if ch[0] == b'\r' { b'\n' } else { ch[0] };
+
         if used < buf.len() {
-            buf[used] = ch[0];
+            buf[used] = c;
             used += 1;
         }
 
-        if ch[0] == b'\n' {
+        if c == b'\n' {
             break;
         }
     }
@@ -60,12 +62,20 @@ fn read_line(buf: &mut [u8]) -> usize {
 fn first_word(line: &[u8]) -> &[u8] {
     let mut start = 0;
     while start < line.len()
-        && (line[start] == b' ' || line[start] == b'\t' || line[start] == b'\n')
+        && (line[start] == b' '
+            || line[start] == b'\t'
+            || line[start] == b'\n'
+            || line[start] == b'\r')
     {
         start += 1;
     }
     let mut end = start;
-    while end < line.len() && line[end] != b' ' && line[end] != b'\t' && line[end] != b'\n' {
+    while end < line.len()
+        && line[end] != b' '
+        && line[end] != b'\t'
+        && line[end] != b'\n'
+        && line[end] != b'\r'
+    {
         end += 1;
     }
     &line[start..end]

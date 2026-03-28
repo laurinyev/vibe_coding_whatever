@@ -5,6 +5,7 @@ members = [
   "crates/init",
   "crates/testbin",
   "crates/shell",
+  "crates/fbfill",
 ]
 resolver = "2"
 

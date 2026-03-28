@@ -8,6 +8,14 @@ pub struct Tty {
     y: usize,
 }
 
+#[derive(Clone, Copy)]
+pub struct FramebufferInfo {
+    pub width: usize,
+    pub height: usize,
+    pub pitch: usize,
+    pub bytes_per_pixel: usize,
+}
+
 impl Tty {
     const fn new() -> Self {
         Self {
@@ -59,4 +67,48 @@ pub fn write_bytes(bytes: &[u8]) {
     for &b in bytes {
         tty.putc(b);
     }
+}
+
+pub fn framebuffer_info() -> Option<FramebufferInfo> {
+    let tty = TTY.lock();
+    let fb = tty.fb.as_ref()?;
+    let width = fb.width() as usize;
+    let height = fb.height() as usize;
+    let pitch = fb.pitch() as usize;
+    let bytes_per_pixel = (fb.bpp() / 8) as usize;
+    Some(FramebufferInfo {
+        width,
+        height,
+        pitch,
+        bytes_per_pixel,
+    })
+}
+
+pub fn framebuffer_read(offset: usize, dst: &mut [u8]) -> usize {
+    let tty = TTY.lock();
+    let Some(fb) = tty.fb.as_ref() else {
+        return 0;
+    };
+    let info_height = fb.height() as usize;
+    let size = (fb.pitch() as usize).saturating_mul(info_height);
+    if offset >= size {
+        return 0;
+    }
+    let n = core::cmp::min(size - offset, dst.len());
+    let src = unsafe { core::slice::from_raw_parts(fb.addr().add(offset) as *const u8, n) };
+    dst[..n].copy_from_slice(src);
+    n
+}
+
+pub fn framebuffer_write(bytes: &[u8]) -> usize {
+    let mut tty = TTY.lock();
+    let Some(fb) = tty.fb.as_mut() else {
+        return 0;
+    };
+    let info_height = fb.height() as usize;
+    let size = (fb.pitch() as usize).saturating_mul(info_height);
+    let n = core::cmp::min(size, bytes.len());
+    let dst = unsafe { core::slice::from_raw_parts_mut(fb.addr() as *mut u8, n) };
+    dst.copy_from_slice(&bytes[..n]);
+    n
 }
