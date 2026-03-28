@@ -21,6 +21,11 @@ fn syscall3(n: u64, a: u64, b: u64, c: u64) -> isize {
             in("rsi") b,
             in("rdx") c,
             lateout("rax") ret,
+            lateout("rcx") _,
+            lateout("r8") _,
+            lateout("r9") _,
+            lateout("r10") _,
+            lateout("r11") _,
             options(nostack)
         );
     }
@@ -37,26 +42,11 @@ fn write(bytes: &[u8]) {
 }
 
 fn read_line(buf: &mut [u8]) -> usize {
-    let mut used = 0usize;
-    loop {
-        let mut ch = [0u8; 1];
-        let n = syscall3(SYS_READ, FD_STDIN, ch.as_mut_ptr() as u64, 1);
-        if n <= 0 {
-            continue;
-        }
-
-        let c = if ch[0] == b'\r' { b'\n' } else { ch[0] };
-
-        if used < buf.len() {
-            buf[used] = c;
-            used += 1;
-        }
-
-        if c == b'\n' {
-            break;
-        }
+    let n = syscall3(SYS_READ, FD_STDIN, buf.as_mut_ptr() as u64, buf.len() as u64);
+    if n <= 0 {
+        return 0;
     }
-    used
+    n as usize
 }
 
 fn first_word(line: &[u8]) -> &[u8] {

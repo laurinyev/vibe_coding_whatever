@@ -8,11 +8,13 @@ syscall_int80:
     push rdi
     push rsi
     push rdx
+    sub rsp, 8
     mov rcx, rdx
     mov rdx, rsi
     mov rsi, rdi
     mov rdi, rax
     call syscall_dispatch
+    add rsp, 8
     pop rdx
     pop rsi
     pop rdi

@@ -21,6 +21,11 @@ fn syscall3(n: u64, a: u64, b: u64, c: u64) -> isize {
             in("rsi") b,
             in("rdx") c,
             lateout("rax") ret,
+            lateout("rcx") _,
+            lateout("r8") _,
+            lateout("r9") _,
+            lateout("r10") _,
+            lateout("r11") _,
             options(nostack)
         );
     }
